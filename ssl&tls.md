@@ -148,3 +148,16 @@ sha1sum -b cert.cer //得到sha1后的指纹
 ![1656253753551](.\images\pcap-tls1.3-0-rtt-application.png)
 
 再附上一个证书的格式说明：http://www.infotech.vip/web-https.html
+
+## JA3和JA3S分别是什么？
+
+JA3和JA3S是TLS指纹识别方法，可用于安全监视中以检测和防止恶意活动。它们已成为当今许多工具（例如 Suricata 和 Splunk）中流行的妥协指标 (IoC)。
+JA3是客户端的TLS指纹，是通过client hello中的特定属性生成的；
+JA3S是服务器端的TLS指纹，是通过server hello中的特定属性生成的。
+
+JA3生成的算法如下：将SSL版本、密码套件列表（多个密码套件用短横杠连接）、扩展名、椭圆曲线和椭圆曲线点格式，这5个字段分别用逗号连接字符串，再进行MD5计算，最终得到额32位的hash值就是JA3指纹。
+JA3S生成的算法如下：将SSL 版本、密码和SSLExtension，这3个字段分别用逗号连接字符串，再进行MD5计算，最终得到额32位的hash值就是JA3S指纹。
+
+举个栗子：
+
+
