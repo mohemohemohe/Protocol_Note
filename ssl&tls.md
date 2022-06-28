@@ -122,8 +122,12 @@ static inline guint8 extract_tls13_draft_version(guint32 version) {
 
 ## ssl/tls服务器端将证书发送多个证书给客户端
 
-![1656253065068](.\images\pcap-两个证书.png)在ssl/tls服务器端向客户端发送公钥证书时，其实是发送证书链，也就是说发送的证书中包含服务器端的证书、中间认证的证书（也可能没有）、根证书。
+![1656253065068](.\images\pcap-两个证书.png)
+在ssl/tls服务器端向客户端发送公钥证书时，其实是发送证书链，也就是说，发送的证书中包含服务器端的证书、中间认证的证书（也可能没有）、根证书。
 
+这里发送的证书链是基于PKI证书体系验证证书的合法性。
+
+注：PKI体系的介绍-https://blog.csdn.net/qianlai22/article/details/123402712
 
 
 ## 证书指纹
@@ -159,6 +163,7 @@ JA3生成的算法如下：将SSL版本、密码套件列表（多个密码套�
 JA3S生成的算法如下：将SSL 版本、选择的密码套件和扩展名(Type)，这3个字段分别用逗号连接字符串，再进行MD5计算，最终得到32位的hash值就是JA3S指纹。
 
 举个栗子：
+
 ![image](https://user-images.githubusercontent.com/45613769/175972775-d9410742-ce1e-45b5-a7e3-44fe2a050c18.png)
 
 
