@@ -11,8 +11,7 @@ websocket协议在握手阶段是通过http协商的，可以轻松通过各种�
 ## 交互过程及原理
 
 整个交互过程分成两个阶段：1、http handshake； 2、websocket实现数据的传输。如图所示：
-
-
+![image](https://user-images.githubusercontent.com/45613769/181906433-cc8554f1-eac8-418e-8ed1-c7c9bd27c335.png)
 
 1、http handshake阶段
 
@@ -47,7 +46,9 @@ Sec-Websocket-Extentsions头支持下面这些参数：
 ```
 
 根据上面协商的压缩算法，在websocket传输数据的过程中压缩payload。
+![image](https://user-images.githubusercontent.com/45613769/181906726-6bdf83f3-31fd-48b9-866a-d89d2ccbabbd.png)
 
+![image](https://user-images.githubusercontent.com/45613769/181906767-425a915b-2b1e-4f63-8ebd-383a7dd4148e.png)
 
 
 ## 二、websocket阶段
