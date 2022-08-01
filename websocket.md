@@ -239,3 +239,5 @@ websocket协议标准  https://tools.ietf.org/html/rfc6455
 压缩扩展参数 https://datatracker.ietf.org/doc/html/rfc7692#section-7.2.2
 
 中文翻译的websocket协议RFC https://blog.csdn.net/BelugaW/article/details/117379133
+
+websocket协议https://github.com/halfrost/Halfrost-Field/blob/master/contents/Protocol/WebSocket.md
