@@ -75,9 +75,13 @@ Sec-WebSocket-Version: 7
 ⑤Sec-WebSocket-Key 是由浏览器随机生成的，提供基本的防护，防止恶意或无意的连接。
 
 ⑥Sec-WebSocket-Protocol (可选)，客户端向服务器端发送自己支持的自协议列表，服务器端选择自己所支持的子协议，http握手完成后，会在websocket发送阶段，payload是服务器端选择的子协议形式发送。
+
 client->server:
+
 ![image](https://user-images.githubusercontent.com/45613769/182169914-23e80f6f-9164-4acd-a308-e0acdbbeecd8.png)
+
 server->client:
+
 ![image](https://user-images.githubusercontent.com/45613769/182170083-fbf3c8fb-bbb6-42c5-9f60-0290b279ad70.png)
 
 
