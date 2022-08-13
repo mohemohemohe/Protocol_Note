@@ -31,10 +31,37 @@ server--> client: 服务器端支持websocket，就会返回101响应码；若�
 
 http握手阶段，http协议格式就不细说了，我们重点介绍这个阶段，握手协商了哪些参数，以及这些参数将会如何作用到后面的websocket数据传输的过程中。
 
-Sec-Websocket-Extentsions头支持下面这些参数：
+1、websocket协议请求：ws://(default port:80), wss://(default port=443)，这种方式类似HTTP和HTTPS协议的请求方式，但是不同的是，websocket不仅仅用于浏览器的访问。当请求头出现下面的头部信息时，就说明发起了websocket协议的请求:
 
 ```
-   o  " permessage-foo"	表示支持foo算法压缩扩展，目前官方只支持deflate的标准，以后也可能会支持LZ4、ZIP等
+Connection: Upgrade
+Upgrade: websocket
+```
+
+2、Sec-WebSocket-Version表示websocket的版本，若服务器端不支持客户端请求的版本，服务器端就会向客户端返回自己所支持的版本号，这时客户端会用它所支持的最新版本号重新进行http握手，相关的交互字段如下：
+①client->server:
+
+```
+Sec-WebSocket-Version: 13
+```
+
+②server->client: 服务器端不支持版本13，因此服务器端返回自己所支持的版本号列表
+
+```
+HTTP/1.1 400 Bad Request
+Sec-WebSocket-Version: 8,7,5
+```
+
+③client->server:客户端选择自己所支持的最新的版本号7，重新进行握手
+
+```
+Sec-WebSocket-Version: 7
+```
+
+④Sec-Websocket-Extentsions头支持下面这些参数：
+
+```
+   o  "permessage-foo"	表示支持foo算法压缩扩展，目前官方只支持deflate的标准，以后也可能会支持LZ4、ZIP等
    
    o  "server_no_context_takeover" 服务器端不共享压缩状态，每次发送一个payload经过解压缩后，就释放状态
   
@@ -44,6 +71,20 @@ Sec-Websocket-Extentsions头支持下面这些参数：
 
    o  "client_max_window_bits" 客户端压缩算法的最大压缩窗口
 ```
+后面会具体介绍 permessage-deflate 的实现方式。
+
+⑤Sec-WebSocket-Key 是由浏览器随机生成的，提供基本的防护，防止恶意或无意的连接。
+
+⑥Sec-WebSocket-Protocol (可选)，客户端向服务器端发送自己支持的自协议列表，服务器端选择自己所支持的子协议，http握手完成后，会在websocket发送阶段，payload是服务器端选择的子协议形式发送。
+
+client->server:
+
+![image](https://user-images.githubusercontent.com/45613769/182169914-23e80f6f-9164-4acd-a308-e0acdbbeecd8.png)
+
+server->client:
+
+![image](https://user-images.githubusercontent.com/45613769/182170083-fbf3c8fb-bbb6-42c5-9f60-0290b279ad70.png)
+
 
 根据上面协商的压缩算法，在websocket传输数据的过程中压缩payload。
 ![image](https://user-images.githubusercontent.com/45613769/181906726-6bdf83f3-31fd-48b9-866a-d89d2ccbabbd.png)
@@ -75,6 +116,7 @@ Sec-Websocket-Extentsions头支持下面这些参数：
      + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
      |                     Payload Data continued ...                |
      +---------------------------------------------------------------+
+
 前面的几个字节：从FIN到Masking-key这些字段都是为payload data服务的，下面我们来看看各个字段道理是怎么作用在payload data上的。
 
 **1、FIN（1bit），用于描述消息是否结束。**
@@ -146,11 +188,11 @@ payload length 和 Extended payload length一起表示payload的长度，下面�
 
 如果：
 
-​		payload length = 0~126，那么payload的长度就是payload length，即Extended payload length为0；
-
-​		payload length = 126，那么payload的长度取后2个字节；
-
-​		payload length = 127，那么payload的长度取后8个字节；
+		payload length = 0~126，那么payload的长度就是payload length，即Extended payload length为0；
+	
+		payload length = 126，那么payload的长度取后2个字节；
+	
+		payload length = 127，那么payload的长度取后8个字节；
 
 我们可以看到payload长度上限高达2G=2^(32-1)。
 
@@ -191,6 +233,141 @@ function _unmask(buffer, mask) {
 
 **7、payload，是真正交互的数据**。
 
+# permessage-deflate 压缩的实现方式
+deflate压缩算法用的是lz77和Huffman算法，具体的实现是在标准库 zlib.h 里面的deflate。我们可以借鉴一下wireshark中的解压缩的实现方式：
+
+初始化的方式，重点看初始化的时机：
+```C
+static void
+websocket_parse_extensions(websocket_conv_t *websocket_conv, const char *str)
+{
+  /*
+   * Grammar for the header:
+   *
+   *    Sec-WebSocket-Extensions = extension-list
+   *    extension-list = 1#extension
+   *    extension = extension-token *( ";" extension-param )
+   *    extension-token = registered-token
+   *    registered-token = token
+   *    extension-param = token [ "=" (token | quoted-string) ]
+   */
+
+  /*
+   * RFC 7692 permessage-deflate parsing.
+   * "x-webkit-deflate-frame" is an alias used by some versions of Safari browser
+   */
+
+  websocket_conv->permessage_deflate = !!strstr(str, "permessage-deflate")
+      || !!strstr(str, "x-webkit-deflate-frame");
+#ifdef HAVE_ZLIB
+  websocket_conv->permessage_deflate_ok = pref_decompress &&
+       websocket_conv->permessage_deflate;
+  if (websocket_conv->permessage_deflate_ok) {
+    websocket_conv->server_wbits =
+        websocket_extract_wbits(strstr(str, "server_max_window_bits=")); //默认是15
+
+    if (!strstr(str, "server_no_context_takeover")) { //有这个参数的话，服务端就共享lz77的滑动窗口
+      websocket_conv->server_take_over_context =
+          websocket_init_z_stream_context(websocket_conv->server_wbits);
+    }
+
+    websocket_conv->client_wbits =
+        websocket_extract_wbits(strstr(str, "client_max_window_bits="));
+
+    if (!strstr(str, "client_no_context_takeover")) {
+      websocket_conv->client_take_over_context =
+          websocket_init_z_stream_context(websocket_conv->client_wbits);
+    }
+  }
+#endif
+}
+```
+
+初始化
+```C
+websocket_init_z_stream_context(gint8 wbits)
+{
+  z_streamp z_strm = wmem_new0(wmem_file_scope(), z_stream);
+
+  z_strm->zalloc = websocket_zalloc;
+  z_strm->zfree = websocket_zfree;
+
+  if (inflateInit2(z_strm, wbits) != Z_OK) {
+    inflateEnd(z_strm);
+    wmem_free(wmem_file_scope(), z_strm);
+    return NULL;
+  }
+  return z_strm;
+}
+```
+
+解压缩
+```C
+/*
+ * Decompress the given buffer using the given zlib context. On success, the
+ * (possibly empty) buffer is stored as "proto data" and TRUE is returned.
+ * Otherwise FALSE is returned.
+ */
+static gboolean
+websocket_uncompress(tvbuff_t *tvb, packet_info *pinfo, z_streamp z_strm, tvbuff_t **uncompressed_tvb, guint32 key)
+{
+  /*
+   * Decompression a message: append "0x00 0x00 0xff 0xff" to the end of
+   * message, then apply DEFLATE to the result.
+   * https://tools.ietf.org/html/rfc7692#section-7.2.2
+   */
+  guint8   *decompr_payload = NULL;
+  guint     decompr_len = 0;
+  guint     compr_len, decompr_buf_len;
+  guint8   *compr_payload, *decompr_buf;
+  gint      err;
+
+  compr_len = tvb_captured_length(tvb) + 4;
+  compr_payload = (guint8 *)wmem_alloc(pinfo->pool, compr_len);
+  tvb_memcpy(tvb, compr_payload, 0, compr_len-4);
+  compr_payload[compr_len-4] = compr_payload[compr_len-3] = 0x00;
+  compr_payload[compr_len-2] = compr_payload[compr_len-1] = 0xff;
+  decompr_buf_len = 2*compr_len;
+  decompr_buf = (guint8 *)wmem_alloc(pinfo->pool, decompr_buf_len);
+
+  z_strm->next_in = compr_payload;
+  z_strm->avail_in = compr_len;
+  /* Decompress all available data. */
+  do {
+    z_strm->next_out = decompr_buf;
+    z_strm->avail_out = decompr_buf_len;
+
+    err = inflate(z_strm, Z_SYNC_FLUSH);
+
+    if (err == Z_OK || err == Z_STREAM_END || err == Z_BUF_ERROR) {
+      guint avail_bytes = decompr_buf_len - z_strm->avail_out;
+      if (avail_bytes) {
+        decompr_payload = (guint8 *)wmem_realloc(wmem_file_scope(), decompr_payload,
+                                                 decompr_len + avail_bytes);
+        memcpy(&decompr_payload[decompr_len], decompr_buf, avail_bytes);
+        decompr_len += avail_bytes;
+      }
+    }
+  } while (err == Z_OK);
+
+  if (err == Z_STREAM_END || err == Z_BUF_ERROR) {
+    /* Data was (partially) uncompressed. */
+    websocket_packet_t *pkt_info = wmem_new0(wmem_file_scope(), websocket_packet_t);
+    if (decompr_len > 0) {
+      pkt_info->decompr_payload = decompr_payload;
+      pkt_info->decompr_len = decompr_len;
+      *uncompressed_tvb = tvb_new_real_data(decompr_payload, decompr_len, decompr_len);
+    }
+    p_add_proto_data(wmem_file_scope(), pinfo, proto_websocket, key, pkt_info);
+    return TRUE;
+  } else {
+    /* decompression failed */
+    wmem_free(wmem_file_scope(), decompr_payload);
+    return FALSE;
+  }
+```
+
+
 # 参考资料
 
 websocket协议标准  https://tools.ietf.org/html/rfc6455 
@@ -198,3 +375,5 @@ websocket协议标准  https://tools.ietf.org/html/rfc6455
 压缩扩展参数 https://datatracker.ietf.org/doc/html/rfc7692#section-7.2.2
 
 中文翻译的websocket协议RFC https://blog.csdn.net/BelugaW/article/details/117379133
+
+websocket协议https://github.com/halfrost/Halfrost-Field/blob/master/contents/Protocol/WebSocket.md
