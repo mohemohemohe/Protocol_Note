@@ -16,7 +16,7 @@
 
 ​	可用缓存大小：即TCP头部的窗口大小。表明自己作为接收端的可用缓存空间的大小（win_size * win_scale）
 
-![滑动窗口可视化](D:\Protocol_Note\images\tcp\滑动窗口可视化.jpg)
+![滑动窗口可视化]([D:\Protocol_Note\images\tcp\滑动窗口可视化.jpg](https://github.com/mohemohemohe/Protocol_Note/blob/main/images/tcp/%E6%BB%91%E5%8A%A8%E7%AA%97%E5%8F%A3%E5%8F%AF%E8%A7%86%E5%8C%96.jpg))
 
 ②滑动窗口机制：当接收方收到ACK后，滑动窗口向右移动。
 
